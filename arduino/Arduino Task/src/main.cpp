@@ -2,6 +2,9 @@
 
 // put function declarations here:
 int myFunction(int, int);
+int TemperatureSensorPin = A0; // Example sensor pin  
+float TemperatureReading();
+int B = 3975;
 
 void setup() {
   Serial.begin(9600);
@@ -12,11 +15,18 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-  Serial.println("Hi!");
+  Serial.println(TemperatureReading());
   delay(2000);
 }
 
 // put function definitions here:
 int myFunction(int x, int y) {
   return x + y;
+}
+
+float TemperatureReading() {
+  float sensorValue = analogRead(TemperatureSensorPin);
+  float resistance = (1023-sensorValue)*10000/sensorValue; 
+  float temperature = 1/(log(resistance/10000)/B + 1/298.15) - 273.15;
+  return temperature;
 }
