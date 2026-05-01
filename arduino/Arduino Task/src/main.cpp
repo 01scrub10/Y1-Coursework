@@ -4,21 +4,32 @@
 double* collect_temperature_data();
 int TemperatureSensorPin = A0; // Example sensor pin  
 double TemperatureReading();
-void decide_power_mode();
+void decide_power_mode(double* dft_results);
+void SetSampleRate(double delay);
 double* apply_dft(double* temperature_data);
 void send_data_to_pc(double* dft_results, double* temperature_data);
 const int B = 4275000; // B value of the thermistor
 const int R0 = 100000; // R0 = 100k
 double SamplingRateDelay; 
 const double SampleCollectionTime = 30000; //how double to collect data for dft array
-const double Sampling_frequency = 1000/SamplingRateDelay; // Sampling frequency in Hz
-const int NumSamples = SampleCollectionTime/SamplingRateDelay; // Number of samples to collect
+double Sampling_frequency; // Sampling frequency in Hz
+int NumSamples; // Number of samples to collect
 
 void setup() {
   Serial.begin(9600);
   // put your setup code here, to run once:
-  SamplingRateDelay = 1000;
+  SetSampleRate(1000); 
   Serial.println("Starting temperature data collection...");
+}
+
+void SetSampleRate(double delay)
+{
+  SamplingRateDelay = delay;
+  Sampling_frequency = 1000/SamplingRateDelay;
+  NumSamples = SampleCollectionTime/SamplingRateDelay; 
+  Serial.print("Sampling rate set to ");
+  Serial.print(Sampling_frequency);
+  Serial.println(" Hz");
 }
 
 void loop() {
@@ -26,6 +37,9 @@ void loop() {
   double* temp_data = collect_temperature_data();
   double* dft_result = apply_dft(temp_data);
   send_data_to_pc(dft_result, temp_data);
+  decide_power_mode(dft_result);
+  delete[] temp_data;
+  delete[] dft_result;
 }
 
 double TemperatureReading() //gets the temperature reading from the sensor and converts it to Celsius
@@ -62,24 +76,34 @@ double* apply_dft(double* temperature_data)
   double* F = new double[NumSamples];
   double* result = new double[NumSamples * 2]; //first half for frequencies, second half for magnitudes
 
-for (int k = 1; k < NumSamples; k++)
+for (int k = 0; k < NumSamples; k++)
 {
   real[k] = 0;
   imag[k] = 0;
-  for (int n = 1; n < NumSamples; n++)
+  for (int n = 0; n < NumSamples; n++)
   {
     real[k] += temperature_data[n] * cos(2 * PI * k * n / NumSamples);
-    imag[k] += temperature_data[n] * sin(2 * PI * k * n / NumSamples);
+    imag[k] -= temperature_data[n] * sin(2 * PI * k * n / NumSamples);
   }
-  imag[k] = -imag[k]; //invert the imaginary part to match the standard DFT definition
+  Serial.print("k:");
+  Serial.println(k);
+  Serial.print("Real:");
+  Serial.println(real[k]);
+  Serial.print("Imaginary:");
+  Serial.println(imag[k]);
   magnitude[k] = sqrt(real[k]*real[k] + imag[k]*imag[k]);
   F[k] = double((double(k) * double(Sampling_frequency)) / double(NumSamples));
 
   result[k] = F[k];
-  result[k + NumSamples] = (2.0/NumSamples) * magnitude[k]; //amplitude scaling 
-
+  result[k + NumSamples] = magnitude[k]; 
 }
+//free memory
+delete[] real;
+delete[] imag;
+delete[] magnitude;
+delete[] F;
 
+  result[NumSamples] = 0;
 
 return result;
 }
@@ -103,3 +127,39 @@ for (int i = 0; i < NumSamples; i++)
 }
 }
 
+void decide_power_mode(double* dft_results)
+{
+  //find dominant frequency
+  int dominant_index = 0;
+  double current_max_magnitude = 0;
+  for (int i = 0; i < NumSamples; i++)
+  {
+    if (dft_results[i + NumSamples] > current_max_magnitude)
+    {
+      current_max_magnitude = dft_results[i + NumSamples];
+      dominant_index = i;
+    }
+    else if (dft_results[i + NumSamples] == current_max_magnitude)
+    {
+      //if the data is multimodal
+    }
+  }
+
+  //choose mode based on average frequency
+  double new_sample_delay;
+  if (current_max_magnitude > 0.5)
+  {
+    new_sample_delay = 1000; //active mode
+  }
+  else if (current_max_magnitude > 0.1)
+  {
+    new_sample_delay = 5000; //idle mode
+  }
+  else
+  {
+    new_sample_delay = 30000; //power-down mode
+  }
+    
+  //set delay based on mode
+  SetSampleRate(new_sample_delay);
+}
