@@ -1,5 +1,13 @@
 #include <Arduino.h>
 
+
+//NOTES FOR DEVELOPMENT:
+//main mode is set by the consecutive fluctuations
+//then check dominant frequency and adjust sample rate 
+    //this needs finishing so that the sampling rate is always at least 2x the dominant frequency, 
+    //also needs to adjust to lower sample rates if the dominant frequency is low, to save power
+//implement moving average 
+
 // put function declarations here:
 double* collect_temperature_data();
 int TemperatureSensorPin = A0; // Example sensor pin  
@@ -7,10 +15,13 @@ double TemperatureReading();
 void decide_power_mode(double* dft_results);
 void SetSampleRate(double delay);
 double* apply_dft(double* temperature_data);
+void determine_fluctuations(double* temp_data);
 void send_data_to_pc(double* dft_results, double* temperature_data);
 const int B = 4275000; // B value of the thermistor
 const int R0 = 100000; // R0 = 100k
-double SamplingRateDelay; 
+const double fluctuation_threshold; //threshold for if a fluctuation is high enough to change modes
+double SamplingRateDelay;
+int inactive_cycles = 0;
 const double SampleCollectionTime = 30000; //how double to collect data for dft array
 double Sampling_frequency; // Sampling frequency in Hz
 int NumSamples; // Number of samples to collect
@@ -35,6 +46,7 @@ void SetSampleRate(double delay)
 void loop() {
   // put your main code here, to run repeatedly:
   double* temp_data = collect_temperature_data();
+  determine_fluctuations(temp_data);
   double* dft_result = apply_dft(temp_data);
   send_data_to_pc(dft_result, temp_data);
   decide_power_mode(dft_result);
@@ -42,6 +54,39 @@ void loop() {
   delete[] dft_result;
 }
 
+void determine_fluctuations(double* temp_data)
+{
+  double* fluctuations = new double[NumSamples - 1];
+  for (int i = 1; i < NumSamples; i++)//finds the fluctuations in data between consecutive readings
+  {
+    fluctuations[i-1] = temp_data[i] - temp_data[i-1];
+  }
+  //finds if there are atleast 3 significant fluctuations in the data, to avoid outliers 
+  int high_fluctuations = 0;
+  for (int i = 0; i < NumSamples - 1; i++)
+  {
+    if (abs(fluctuations[i]) > fluctuation_threshold) //threshold for significant fluctuation
+    {
+      high_fluctuations++;
+    }
+  }
+  if (high_fluctuations >= 3)
+  {
+    SetSampleRate(1000); //set to active mode
+    inactive_cycles = 0; //reset inactive cycle count
+  }
+  else
+  {
+    SetSampleRate(5000); //set to idle mode
+    inactive_cycles++;
+    if (inactive_cycles >= 5) //if there are 3 consecutive cycles of low fluctuations, set to power-down mode
+    {
+      SetSampleRate(30000);
+    }
+  }
+
+  delete[] fluctuations;
+}
 double TemperatureReading() //gets the temperature reading from the sensor and converts it to Celsius
 {
   int a = analogRead(TemperatureSensorPin);
@@ -54,7 +99,6 @@ double TemperatureReading() //gets the temperature reading from the sensor and c
 double* collect_temperature_data()
 {
 //collects data for 180 seconds and stores it in an array
-
 double* temperature_data = new double[NumSamples];
 int i = 0;
 while(i<NumSamples)
@@ -127,12 +171,13 @@ for (int i = 0; i < NumSamples; i++)
 }
 }
 
-void decide_power_mode(double* dft_results)
+double find_dominant_frequency(double* dft_results)
 {
   //find dominant frequency
   int dominant_index = 0;
   double current_max_magnitude = 0;
-  for (int i = 0; i < NumSamples; i++)
+
+   for (int i = 0; i < NumSamples/2; i++)//only need to check first half of dft results because of nyquist theorem
   {
     if (dft_results[i + NumSamples] > current_max_magnitude)
     {
@@ -141,25 +186,45 @@ void decide_power_mode(double* dft_results)
     }
     else if (dft_results[i + NumSamples] == current_max_magnitude)
     {
-      //if the data is multimodal
+      //if the data is multimodal take lower 
+      if (dft_results[i] < dft_results[dominant_index])
+      {
+        dominant_index = i;
+      }
     }
   }
 
+  return dft_results[dominant_index];
+}
+
+void decide_power_mode(double* dft_results)
+{
   //choose mode based on average frequency
   double new_sample_delay;
-  if (current_max_magnitude > 0.5)
+  double dominant_frequency = find_dominant_frequency(dft_results);
+  Serial.print("Dominant Frequency: ");
+  Serial.println(dominant_frequency);
+
+  //adjust sample rate based on dominant frequency
+  if (Sampling_frequency<dominant_frequency*2)
   {
-    new_sample_delay = 1000; //active mode
+    SetSampleRate(dominant_frequency*2); //active mode
   }
-  else if (current_max_magnitude > 0.1)
-  {
-    new_sample_delay = 5000; //idle mode
-  }
-  else
-  {
-    new_sample_delay = 30000; //power-down mode
-  }
+  
+  // if (dominant_frequency > 0.5)
+  // {
+  //   new_sample_delay = 1000; //active mode
+  //   inactive_cycles = 0; //reset inactive cycle count
+  // }
+  // else if (dominant_frequency > 0.1)
+  // {
+  //   new_sample_delay = 5000; //idle mode
+  // }
+  // else
+  // {
+  //   new_sample_delay = 30000; //power-down mode
+  // }
     
-  //set delay based on mode
-  SetSampleRate(new_sample_delay);
+  // //set delay based on mode
+  // SetSampleRate(new_sample_delay);
 }
