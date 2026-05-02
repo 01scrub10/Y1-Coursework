@@ -11,27 +11,27 @@
 // put function declarations here:
 void collect_temperature_data();
 int TemperatureSensorPin = A0; // sensor pin  
-float TemperatureReading();
+double TemperatureReading();
 void decide_power_mode(int high_fluctuations);
-void SetSampleRate(float delay);
+void SetSampleRate(double delay);
 void apply_dft();
 int determine_fluctuations();
 void send_data_to_pc();
 const int B = 4275000; // B value of the thermistor
 const int R0 = 100000; // R0 = 100k
-const float fluctuation_threshold = 0.5; //threshold for if a fluctuation is high enough to change modes
-float SamplingRateDelay;
+const double fluctuation_threshold = 0.5; //threshold for if a fluctuation is high enough to change modes
+double SamplingRateDelay;
 int inactive_cycles = 0;
-const float SampleCollectionTime = 5000; //how long to temp collect data 
-float Sampling_frequency; // Sampling frequency in Hz
+const double SampleCollectionTime = 10000; //how long to temp collect data 
+double Sampling_frequency; // Sampling frequency in Hz
 int NumSamples; // Number of samples to collect
 //static arrays set to max size to avoid memory issues with dynamic allocation
-float fluctuations[240]; // changes in consecutive temperature readings
-float temperature_data[240];
-float real[240];
-float imag[240];
-float magnitude[240];
-float F[240];
+double fluctuations[60]; // changes in consecutive temperature readings
+double temperature_data[60];
+double real[60];
+double imag[60];
+double magnitude[60];
+double F[60];
 
 void setup() 
 {
@@ -40,7 +40,7 @@ void setup()
   Serial.println("Starting temperature data collection...");
 }
 
-void SetSampleRate(float delay)
+void SetSampleRate(double delay)
 { 
   //set minimum and maximum delay to keep within acceptable range
   if (delay < 250)
@@ -53,7 +53,11 @@ void SetSampleRate(float delay)
   }
   SamplingRateDelay = delay;
   Sampling_frequency = 1000/SamplingRateDelay;
-  NumSamples = SampleCollectionTime/SamplingRateDelay; 
+  NumSamples = 10; 
+  if (NumSamples > 60) //limit number of samples to 60 to avoid memory issues
+  {
+    NumSamples = 60;
+  }
   Serial.print("Sampling rate set to ");
   Serial.print(Sampling_frequency);
   Serial.println(" Hz");
@@ -88,26 +92,34 @@ int determine_fluctuations()
   
   return high_fluctuations;
 }
-float TemperatureReading() //gets the temperature reading from the sensor and converts it to Celsius
+double TemperatureReading() //gets the temperature reading from the sensor and converts it to Celsius
 {
   int a = analogRead(TemperatureSensorPin);
-  float R = 1023.0/a-1.0;
+  if (a == 0) //avoid divide by zero error
+  {
+    a = 1;
+  }
+  if (a >= 1023) //avoid divide by zero error
+  {
+    a = 1022;
+  }
+  double R = 1023.0/a-1.0;
   R = R0*R;
-  float temperature = 1.0/(log(R/R0)/B+1/298.15)-273.15; // convert to temperature via datasheet
+  double temperature = 1.0/(log(R/R0)/B+1/298.15)-273.15; // convert to temperature via datasheet
   return temperature;
 }
 
 void collect_temperature_data()
 {
 //collects data for 180 seconds and stores it in an array
-int i = 0;
-while(i<NumSamples)
+for (int i = 0; i < NumSamples; i++)
 {
 temperature_data[i] = TemperatureReading();
 delay(SamplingRateDelay);
-Serial.print("Collected data point ");
-Serial.println(i);
-i++;
+Serial.print("Temperature reading ");
+Serial.print(i);
+Serial.print(": ");
+Serial.println(temperature_data[i]);
 }
 }
 
@@ -123,14 +135,8 @@ for (int k = 0; k < NumSamples; k++)
     real[k] += temperature_data[n] * cos(2 * PI * k * n / NumSamples);
     imag[k] -= temperature_data[n] * sin(2 * PI * k * n / NumSamples);
   }
-  Serial.print("k:");
-  Serial.println(k);
-  Serial.print("Real:");
-  Serial.println(real[k]);
-  Serial.print("Imaginary:");
-  Serial.println(imag[k]);
   magnitude[k] = sqrt(real[k]*real[k] + imag[k]*imag[k]);
-  F[k] = float((float(k) * float(Sampling_frequency)) / float(NumSamples));
+  F[k] = double((double(k) * double(Sampling_frequency)) / double(NumSamples));
 }
 }
 
@@ -153,13 +159,13 @@ for (int i = 0; i < NumSamples; i++)
 }
 }
 
-float find_dominant_frequency()
+double find_dominant_frequency()
 {
   //find dominant frequency
-  int dominant_index = 0;
-  float current_max_magnitude = 0;
+  int dominant_index = 1;
+  double current_max_magnitude = 0;
 
-   for (int i = 0; i < NumSamples/2; i++)//only need to check first half of dft results because of nyquist theorem
+   for (int i = 1; i < NumSamples/2; i++)//only need to check first half of dft results because of nyquist theorem
   {
     if (magnitude[i] > current_max_magnitude)
     {
@@ -182,9 +188,9 @@ float find_dominant_frequency()
 void decide_power_mode(int high_fluctuations)
 {
   //choose mode based on both domoinant frequency and fluctuations
-  float new_sample_delay;
+  double new_sample_delay;
   //dft dominiant frequency
-  float dominant_frequency = find_dominant_frequency();
+  double dominant_frequency = find_dominant_frequency();
   Serial.print("Dominant Frequency: ");
   Serial.println(dominant_frequency);
 
@@ -195,6 +201,7 @@ void decide_power_mode(int high_fluctuations)
   {
     new_sample_delay = 1000; //set to active mode
     inactive_cycles = 0; //reset inactive cycle count
+    Serial.println("High fluctuations detected, setting to active mode");
   }
   else
   {
@@ -206,14 +213,16 @@ void decide_power_mode(int high_fluctuations)
       //decided on 10 second delay as it gives enough readings in 1m for some analysis 
     }
   }
+  Serial.print("inactive cycles: ");
+  Serial.println(inactive_cycles);
 
   //then adjust the sample delay dynamically based on dominant frequency
     //if the dominant frequency is more than half the sampling freq, increase to 2x for nyquists theorum
-    if (dominant_frequency > Sampling_frequency / 2)
+    if (Sampling_frequency < 2 * dominant_frequency)
     {
       new_sample_delay = 1000 / (2 * dominant_frequency); //set to 2x the dominant frequency
     }
-    else if (dominant_frequency < Sampling_frequency / 8)// if the dominant frequency is much lower than sampling rate
+    else if (Sampling_frequency>8*dominant_frequency)// if the dominant frequency is much lower than sampling rate
     {
       //decreases sample rate proportionally to the difference between the dominant frequency and the sampling frequency, to save power
       new_sample_delay = SamplingRateDelay * (Sampling_frequency / (4 * dominant_frequency));
