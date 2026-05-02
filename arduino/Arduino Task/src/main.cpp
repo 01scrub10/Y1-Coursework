@@ -9,31 +9,38 @@
 //implement moving average 
 
 // put function declarations here:
-double* collect_temperature_data();
-int TemperatureSensorPin = A0; // Example sensor pin  
-double TemperatureReading();
-void decide_power_mode(double* dft_results, int high_fluctuations);
-void SetSampleRate(double delay);
-double* apply_dft(double* temperature_data);
-int determine_fluctuations(double* temp_data);
-void send_data_to_pc(double* dft_results, double* temperature_data);
+void collect_temperature_data();
+int TemperatureSensorPin = A0; // sensor pin  
+float TemperatureReading();
+void decide_power_mode(int high_fluctuations);
+void SetSampleRate(float delay);
+void apply_dft();
+int determine_fluctuations();
+void send_data_to_pc();
 const int B = 4275000; // B value of the thermistor
 const int R0 = 100000; // R0 = 100k
-const double fluctuation_threshold = 0.5; //threshold for if a fluctuation is high enough to change modes
-double SamplingRateDelay;
+const float fluctuation_threshold = 0.5; //threshold for if a fluctuation is high enough to change modes
+float SamplingRateDelay;
 int inactive_cycles = 0;
-const double SampleCollectionTime = 60000; //how long to temp collect data 
-double Sampling_frequency; // Sampling frequency in Hz
+const float SampleCollectionTime = 5000; //how long to temp collect data 
+float Sampling_frequency; // Sampling frequency in Hz
 int NumSamples; // Number of samples to collect
+//static arrays set to max size to avoid memory issues with dynamic allocation
+float fluctuations[240]; // changes in consecutive temperature readings
+float temperature_data[240];
+float real[240];
+float imag[240];
+float magnitude[240];
+float F[240];
 
-void setup() {
+void setup() 
+{
   Serial.begin(9600);
-  // put your setup code here, to run once:
   SetSampleRate(1000); 
   Serial.println("Starting temperature data collection...");
 }
 
-void SetSampleRate(double delay)
+void SetSampleRate(float delay)
 { 
   //set minimum and maximum delay to keep within acceptable range
   if (delay < 250)
@@ -53,22 +60,21 @@ void SetSampleRate(double delay)
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  double* temp_data = collect_temperature_data();
-  int high_fluctuations = determine_fluctuations(temp_data);
-  double* dft_result = apply_dft(temp_data);
-  send_data_to_pc(dft_result, temp_data);
-  decide_power_mode(dft_result, high_fluctuations);
-  delete[] temp_data;
-  delete[] dft_result;
+  
+  collect_temperature_data();
+  int high_fluctuations = determine_fluctuations();
+  apply_dft();
+  send_data_to_pc();
+  decide_power_mode(high_fluctuations);
+  
 }
 
-int determine_fluctuations(double* temp_data)
+int determine_fluctuations()
 {
-  double* fluctuations = new double[NumSamples - 1];
+  
   for (int i = 1; i < NumSamples; i++)//finds the fluctuations in data between consecutive readings
   {
-    fluctuations[i-1] = temp_data[i] - temp_data[i-1];
+    fluctuations[i-1] = temperature_data[i] - temperature_data[i-1];
   }
   //finds if there are atleast 3 significant fluctuations in the data, to avoid outliers 
   int high_fluctuations = 0;
@@ -80,22 +86,20 @@ int determine_fluctuations(double* temp_data)
     }
   }
   
-  delete[] fluctuations;
   return high_fluctuations;
 }
-double TemperatureReading() //gets the temperature reading from the sensor and converts it to Celsius
+float TemperatureReading() //gets the temperature reading from the sensor and converts it to Celsius
 {
   int a = analogRead(TemperatureSensorPin);
-  double R = 1023.0/a-1.0;
+  float R = 1023.0/a-1.0;
   R = R0*R;
-  double temperature = 1.0/(log(R/R0)/B+1/298.15)-273.15; // convert to temperature via datasheet
+  float temperature = 1.0/(log(R/R0)/B+1/298.15)-273.15; // convert to temperature via datasheet
   return temperature;
 }
 
-double* collect_temperature_data()
+void collect_temperature_data()
 {
 //collects data for 180 seconds and stores it in an array
-double* temperature_data = new double[NumSamples];
 int i = 0;
 while(i<NumSamples)
 {
@@ -105,16 +109,10 @@ Serial.print("Collected data point ");
 Serial.println(i);
 i++;
 }
-return temperature_data;
 }
 
-double* apply_dft(double* temperature_data)
+void apply_dft()
 {
-  double* real = new double[NumSamples];
-  double* imag = new double[NumSamples];
-  double* magnitude = new double[NumSamples];
-  double* F = new double[NumSamples];
-  double* result = new double[NumSamples * 2]; //first half for frequencies, second half for magnitudes
 
 for (int k = 0; k < NumSamples; k++)
 {
@@ -132,30 +130,18 @@ for (int k = 0; k < NumSamples; k++)
   Serial.print("Imaginary:");
   Serial.println(imag[k]);
   magnitude[k] = sqrt(real[k]*real[k] + imag[k]*imag[k]);
-  F[k] = double((double(k) * double(Sampling_frequency)) / double(NumSamples));
-
-  result[k] = F[k];
-  result[k + NumSamples] = magnitude[k]; 
+  F[k] = float((float(k) * float(Sampling_frequency)) / float(NumSamples));
 }
-//free memory
-delete[] real;
-delete[] imag;
-delete[] magnitude;
-delete[] F;
-
-  result[NumSamples] = 0;
-
-return result;
 }
 
-void send_data_to_pc(double* dft_results, double* temperature_data)
+void send_data_to_pc()
 {
 Serial.println("Frequency (Hz), Magnitude");
 for (int i = 0; i < NumSamples; i++)
 {
-  Serial.print(dft_results[i]);
+  Serial.print(F[i]);
   Serial.print(", ");
-  Serial.println(dft_results[i + NumSamples]);
+  Serial.println(magnitude[i]);
 }
 Serial.println("Temperature Data:");
 Serial.println("Time (s), Temperature (C)");
@@ -167,38 +153,38 @@ for (int i = 0; i < NumSamples; i++)
 }
 }
 
-double find_dominant_frequency(double* dft_results)
+float find_dominant_frequency()
 {
   //find dominant frequency
   int dominant_index = 0;
-  double current_max_magnitude = 0;
+  float current_max_magnitude = 0;
 
    for (int i = 0; i < NumSamples/2; i++)//only need to check first half of dft results because of nyquist theorem
   {
-    if (dft_results[i + NumSamples] > current_max_magnitude)
+    if (magnitude[i] > current_max_magnitude)
     {
-      current_max_magnitude = dft_results[i + NumSamples];
+      current_max_magnitude = magnitude[i];
       dominant_index = i;
     }
-    else if (dft_results[i + NumSamples] == current_max_magnitude)
+    else if (magnitude[i] == current_max_magnitude)
     {
       //if the data is multimodal take lower 
-      if (dft_results[i] < dft_results[dominant_index])
+      if (F[i] < F[dominant_index])
       {
         dominant_index = i;
       }
     }
   }
 
-  return dft_results[dominant_index];
+  return F[dominant_index];
 }
 
-void decide_power_mode(double* dft_results, int high_fluctuations)
+void decide_power_mode(int high_fluctuations)
 {
   //choose mode based on both domoinant frequency and fluctuations
-  double new_sample_delay;
+  float new_sample_delay;
   //dft dominiant frequency
-  double dominant_frequency = find_dominant_frequency(dft_results);
+  float dominant_frequency = find_dominant_frequency();
   Serial.print("Dominant Frequency: ");
   Serial.println(dominant_frequency);
 
