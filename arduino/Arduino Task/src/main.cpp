@@ -1,6 +1,5 @@
 #include <Arduino.h>
 //TODO:
-//implement moving average
 //comment code better
 //remove prints
 
@@ -206,6 +205,7 @@ void decide_power_mode(double current_fluctuation)
   
   //first set mode based on fluctuation
   double mode_rate_delay;
+  
   if (current_fluctuation > fluctuation_threshold)
   {
     mode_rate_delay = 1000; //set to active mode
@@ -227,10 +227,10 @@ void decide_power_mode(double current_fluctuation)
 
   //consider moving average of fluctuations to predict future high fluctuation
   double temp_fluctuation_avg = get_average_fluctuation(current_fluctuation);
-
+  
   if (temp_fluctuation_avg >0)
   {
-    if(temp_fluctuation_avg >0.15)
+    if(temp_fluctuation_avg >0.15)//using lower boundaries for the average as it will be lower than current fluctuation average
     {
       mode_rate_delay = 1000;//predicted to be active
     }
@@ -242,7 +242,6 @@ void decide_power_mode(double current_fluctuation)
     {
       mode_rate_delay = 10000;//predicted to be power-down
     }
-    
   }
   //adjust the new sample delay again using the same method but with a lower weight
   new_sample_delay = new_sample_delay + ((mode_rate_delay - new_sample_delay) * 0.25);
