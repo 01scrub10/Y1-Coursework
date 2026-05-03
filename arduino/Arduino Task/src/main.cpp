@@ -148,6 +148,7 @@ for (int i = 0; i < NumSamples; i++)
   Serial.print(F[i]);
   Serial.print(", ");
   Serial.println(magnitude[i]);
+  delay(100);
 }
 Serial.println("Temperature Data:");
 Serial.println("Time (s), Temperature (C)");
@@ -156,6 +157,7 @@ for (int i = 0; i < NumSamples; i++)
   Serial.print(i * SamplingRateDelay / 1000.0); // Time in seconds
   Serial.print(", ");
   Serial.println(temperature_data[i]);
+  delay(100);
 }
 }
 
@@ -218,7 +220,7 @@ void decide_power_mode(int high_fluctuations)
 
   //then adjust the sample delay dynamically based on dominant frequency
     //if the dominant frequency is more than half the sampling freq, increase to 2x for nyquists theorum
-    if (Sampling_frequency < 2 * dominant_frequency)
+    if (Sampling_frequency < dominant_frequency/2)
     {
       new_sample_delay = 1000 / (2 * dominant_frequency); //set to 2x the dominant frequency
     }
@@ -229,5 +231,6 @@ void decide_power_mode(int high_fluctuations)
     }
 
   //set new delay
+  delay(100); //short delay to stop serial output corruption
    SetSampleRate(new_sample_delay);
 }
