@@ -8,25 +8,28 @@
 void collect_temperature_data();
 int TemperatureSensorPin = A0; // sensor pin  
 double TemperatureReading();
-void decide_power_mode(int high_fluctuations);
+void decide_power_mode(double current_fluctuation);
+double get_average_fluctuation(double current_fluctuation);
 void SetSampleRate(double delay);
 void apply_dft();
-bool determine_fluctuations();
+double determine_fluctuation();
 void send_data_to_pc();
 
 //constants 
 const int B = 4275000; // B value of the thermistor
 const int R0 = 100000; // R0 = 100k
-const double fluctuation_threshold = 0.5; //threshold for if a fluctuation is high enough to change modes
+const double fluctuation_threshold = 0.25; //threshold for if a fluctuation is high enough to change modes
 const double SampleCollectionTime = 60000; //how long to collect 1 cycle of temp data 
 //global variables
 double SamplingRateDelay; //delay between samples
-int inactive_cycles = 0; // how many following cycles of low fluctuations
+int inactive_cycles = 0; // how many following cycles of low fluctuation
 double Sampling_frequency; // Sampling frequency in Hz
 int NumSamples; // Number of samples to collect
 //static arrays set to max size to avoid memory issues with dynamic allocation
 double temperature_data[60];
 double magnitude[60];
+double fluctuations[10]; //has the fluctuations of previous cycles for moving average prediction
+int fluctuation_index = 0; //index for fluctuations array
 
 void setup() 
 {
@@ -37,16 +40,16 @@ void setup()
 void loop() 
 {
   collect_temperature_data();
-  bool high_fluctuations = determine_fluctuations();
+  double current_fluctuation = determine_fluctuation();
   apply_dft();
   send_data_to_pc();
-  decide_power_mode(high_fluctuations);
+  decide_power_mode(current_fluctuation);
 }
 
 void SetSampleRate(double delay)
 { 
-  //set minimum and maximum delay to keep within acceptable range
-    //decided on range of 0.1Hz - 1Hz
+  //set minimum and maximum delay to keep within acceptable fluctuation
+    //decided on fluctuation of 0.1Hz - 1Hz
   if (delay < 1000)
   {
     delay = 1000; 
@@ -69,33 +72,17 @@ void SetSampleRate(double delay)
 
 
 
-bool determine_fluctuations()
+double determine_fluctuation()
 {
-  //determines the range of the data to find if there is significant fluctuations
-    //decided on using range instead of consecutive change as with differing sample rates, "significant change" can be different
-  double min_temp = temperature_data[0];
-  double max_temp = temperature_data[0];
-    for (int i =0;i<NumSamples;i++)
+  //determines the fluctuation of the data to find if there is significant fluctuation
+  double total_differences = 0;
+  double average_fluctuation;
+  for (int i = 1;i<=NumSamples;i++)
   {
-    if (temperature_data[i]<min_temp)
-    {
-      min_temp = temperature_data[i];
-    }
-    else if(temperature_data[i]>max_temp)
-    {
-      max_temp = temperature_data[i];
-    }
+    total_differences = abs(temperature_data[i] - temperature_data[i-1]);
   }
-
-  double range = max_temp - min_temp;
-  if (range > fluctuation_threshold)
-  {
-    return true;
-  }
-  else 
-  {
-    return false;
-  }
+  average_fluctuation = total_differences/NumSamples;
+  return average_fluctuation;
 }
 double TemperatureReading() //gets the temperature reading from the sensor and converts it to Celsius
 {
@@ -183,9 +170,33 @@ double find_dominant_frequency()
   return double((double(dominant_index) * double(Sampling_frequency)) / double(NumSamples));
 }
 
-void decide_power_mode(int high_fluctuations)
+double get_average_fluctuation(double current_fluctuation)
 {
-  //choose mode based on both domoinant frequency and fluctuations
+  //calculates a moving average of the last 10 averages
+  double average = 0;
+  if (fluctuation_index >= 10)//replaces the oldest element with the newest if the array is full (circular)
+  {
+    fluctuation_index = 0;
+  }
+  fluctuations[fluctuation_index] = current_fluctuation;
+  fluctuation_index++;
+  
+
+  if (fluctuations[9] != 0)//only calculates an average if the array is full
+  {
+    double total = 0;
+    for (int i = 0;i<10;i++)
+    {
+      total += fluctuations[i];
+    }
+    average = total/10;
+  }
+  return average;
+}
+
+void decide_power_mode(double current_fluctuation)
+{
+  //choose mode based on both domoinant frequency and fluctuation
   double new_sample_delay;
   //dft dominiant frequency
   double dominant_frequency = find_dominant_frequency();
@@ -193,19 +204,19 @@ void decide_power_mode(int high_fluctuations)
   Serial.println(dominant_frequency);
 
   
-  //first set mode based on fluctuations
+  //first set mode based on fluctuation
   double mode_rate_delay;
-  if (high_fluctuations)
+  if (current_fluctuation > fluctuation_threshold)
   {
     mode_rate_delay = 1000; //set to active mode
     inactive_cycles = 0; //reset inactive cycle count
-    Serial.println("High fluctuations detected, setting to active mode");
+    Serial.println("High fluctuation detected, setting to active mode");
   }
   else
   {
      mode_rate_delay = 5000;//converge towards idle mode
     inactive_cycles++;
-    if (inactive_cycles >= 5) //if there are 5 consecutive cycles of low fluctuations, set to power-down mode
+    if (inactive_cycles >= 5) //if there are 5 consecutive cycles of low fluctuation, set to power-down mode
     {
       mode_rate_delay = 10000; //set to power-down mode
       //decided on 10 second delay as it gives enough readings in 1min for some analysis 
@@ -213,6 +224,28 @@ void decide_power_mode(int high_fluctuations)
   }
   //converge toward mode's sample rate
   new_sample_delay = SamplingRateDelay + ((mode_rate_delay - SamplingRateDelay) * 0.5);
+
+  //consider moving average of fluctuations to predict future high fluctuation
+  double temp_fluctuation_avg = get_average_fluctuation(current_fluctuation);
+
+  if (temp_fluctuation_avg >0)
+  {
+    if(temp_fluctuation_avg >0.15)
+    {
+      mode_rate_delay = 1000;//predicted to be active
+    }
+    else if (temp_fluctuation_avg > 0.05)
+    {
+      mode_rate_delay = 5000;//predicted to be idle
+    }
+    else 
+    {
+      mode_rate_delay = 10000;//predicted to be power-down
+    }
+    
+  }
+  //adjust the new sample delay again using the same method but with a lower weight
+  new_sample_delay = new_sample_delay + ((mode_rate_delay - new_sample_delay) * 0.25);
 
   Serial.print("inactive cycles: ");
   Serial.println(inactive_cycles);
