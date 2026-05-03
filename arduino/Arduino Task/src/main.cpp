@@ -1,13 +1,10 @@
 #include <Arduino.h>
-
-
 //TODO:
 //implement moving average
-//calc frequency dft array on fly instead of stored in array 
 //comment code better
 //remove prints
 
-// put function declarations here:
+// function declarations:
 void collect_temperature_data();
 int TemperatureSensorPin = A0; // sensor pin  
 double TemperatureReading();
@@ -16,21 +13,20 @@ void SetSampleRate(double delay);
 void apply_dft();
 bool determine_fluctuations();
 void send_data_to_pc();
+
+//constants 
 const int B = 4275000; // B value of the thermistor
 const int R0 = 100000; // R0 = 100k
-const double significant_fluctuation = 0.5; //value which is considered the threshold for high change of temperature in one minute
 const double fluctuation_threshold = 0.5; //threshold for if a fluctuation is high enough to change modes
+const double SampleCollectionTime = 60000; //how long to collect 1 cycle of temp data 
+//global variables
 double SamplingRateDelay; //delay between samples
 int inactive_cycles = 0; // how many following cycles of low fluctuations
-const double SampleCollectionTime = 60000; //how long to temp collect data 
 double Sampling_frequency; // Sampling frequency in Hz
 int NumSamples; // Number of samples to collect
 //static arrays set to max size to avoid memory issues with dynamic allocation
 double temperature_data[60];
-double real[60];
-double imag[60];
 double magnitude[60];
-double F[60];
 
 void setup() 
 {
@@ -38,23 +34,22 @@ void setup()
   SetSampleRate(1000); 
   Serial.println("Starting temperature data collection...");
 }
-void loop() {
-  
+void loop() 
+{
   collect_temperature_data();
   bool high_fluctuations = determine_fluctuations();
   apply_dft();
   send_data_to_pc();
   decide_power_mode(high_fluctuations);
-  
 }
 
 void SetSampleRate(double delay)
 { 
   //set minimum and maximum delay to keep within acceptable range
-    //decided on range of 0.1Hz - 4Hz
-  if (delay < 250)
+    //decided on range of 0.1Hz - 1Hz
+  if (delay < 1000)
   {
-    delay = 250; 
+    delay = 1000; 
   }
   else if (delay > 10000)
   {
@@ -93,7 +88,7 @@ bool determine_fluctuations()
   }
 
   double range = max_temp - min_temp;
-  if (range > significant_fluctuation)
+  if (range > fluctuation_threshold)
   {
     return true;
   }
@@ -135,18 +130,16 @@ Serial.println(temperature_data[i]);
 
 void apply_dft()
 {
-
 for (int k = 0; k < NumSamples; k++)
 {
-  real[k] = 0;
-  imag[k] = 0;
+  double real = 0;
+  double imag = 0;
   for (int n = 0; n < NumSamples; n++)
   {
-    real[k] += temperature_data[n] * cos(2 * PI * k * n / NumSamples);
-    imag[k] -= temperature_data[n] * sin(2 * PI * k * n / NumSamples);
+    real += temperature_data[n] * cos(2 * PI * k * n / NumSamples);
+    imag -= temperature_data[n] * sin(2 * PI * k * n / NumSamples);
   }
-  magnitude[k] = sqrt(real[k]*real[k] + imag[k]*imag[k]);
-  F[k] = double((double(k) * double(Sampling_frequency)) / double(NumSamples));
+  magnitude[k] = sqrt(real*real + imag*imag);
 }
 }
 
@@ -155,7 +148,8 @@ void send_data_to_pc()
 Serial.println("Frequency (Hz), Magnitude");
 for (int i = 0; i < NumSamples; i++)
 {
-  Serial.print(F[i]);
+  Serial.print(double((double(i) * double(Sampling_frequency)) / double(NumSamples)));//calculates frequency for each bin
+  //calculated now instead of in an array to save memory
   Serial.print(", ");
   Serial.println(magnitude[i]);
   delay(100);
@@ -185,8 +179,8 @@ double find_dominant_frequency()
       dominant_index = i;
     }
   }
- 
-  return F[dominant_index];
+ //calculate frequency of dominant index to save memory instead of storing in an array
+  return double((double(dominant_index) * double(Sampling_frequency)) / double(NumSamples));
 }
 
 void decide_power_mode(int high_fluctuations)
@@ -200,26 +194,29 @@ void decide_power_mode(int high_fluctuations)
 
   
   //first set mode based on fluctuations
-
+  double mode_rate_delay;
   if (high_fluctuations)
   {
-    new_sample_delay = 1000; //set to active mode
+    mode_rate_delay = 1000; //set to active mode
     inactive_cycles = 0; //reset inactive cycle count
     Serial.println("High fluctuations detected, setting to active mode");
   }
   else
   {
-    new_sample_delay = 5000; //set to idle mode
+     mode_rate_delay = 5000;//converge towards idle mode
     inactive_cycles++;
-    if (inactive_cycles >= 3) //if there are 3 consecutive cycles of low fluctuations, set to power-down mode
+    if (inactive_cycles >= 5) //if there are 5 consecutive cycles of low fluctuations, set to power-down mode
     {
-      new_sample_delay = 10000; //set to power-down mode
-      //decided on 10 second delay as it gives enough readings in 1m for some analysis 
+      mode_rate_delay = 10000; //set to power-down mode
+      //decided on 10 second delay as it gives enough readings in 1min for some analysis 
     }
   }
+  //converge toward mode's sample rate
+  new_sample_delay = SamplingRateDelay + ((mode_rate_delay - SamplingRateDelay) * 0.5);
+
   Serial.print("inactive cycles: ");
   Serial.println(inactive_cycles);
-  delay(100); //short delay to stop serial output corruption
+  delay(100); //delay to stop serial output corruption
   
   //then adjust the sample delay dynamically based on dominant frequency
     //if the dominant frequency is more than half the sampling freq, increase to 2x for nyquists theorum
