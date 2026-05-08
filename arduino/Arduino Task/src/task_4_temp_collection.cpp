@@ -20,15 +20,17 @@ const double SampleCollectionTime = 180000; //how long to collect 1 cycle of tem
 double SamplingRateDelay; //delay between samples
 int inactive_cycles = 0; // how many following cycles of low fluctuation
 double Sampling_frequency; // Sampling frequency in Hz
-int NumSamples; // Number of samples to collect
+const int NumSamples = 180; // Number of samples to collect 
+      //NumSamples is constant in this compared to task 2 because we dont need dynamic allocation
+      //maximum NumSamples found based on what the arduino can handle without crashing
 //static arrays set to max size to avoid memory issues with dynamic allocation
-double temperature_data[180];
-double magnitude[180];
+double temperature_data[NumSamples];
+double magnitude[NumSamples];
 
 void setup() 
 {
   Serial.begin(9600);
-  SetSampleRate(500); 
+  SetSampleRate(1000); 
   Serial.println("Starting temperature data collection...");
 }
 void loop() 
@@ -40,26 +42,8 @@ void loop()
 
 void SetSampleRate(double delay)
 { 
-  //set minimum and maximum delay to keep within acceptable fluctuation
-    //decided on fluctuation of 0.1Hz - 1Hz
-  if (delay < 1000)
-  {
-    delay = 1000; 
-  }
-  else if (delay > 10000)
-  {
-    delay = 10000; 
-  }
   SamplingRateDelay = delay;
   Sampling_frequency = 1000/SamplingRateDelay;
-  NumSamples = int(SampleCollectionTime / SamplingRateDelay); 
-  if (NumSamples > 180) //limit number of samples to 180 to avoid memory issues
-  {
-    NumSamples = 180;
-  }
-  Serial.print("Sampling rate set to ");
-  Serial.print(Sampling_frequency);
-  Serial.println(" Hz");
 }
 
 double TemperatureReading() //gets the temperature reading from the sensor and converts it to Celsius
@@ -113,10 +97,10 @@ void send_data_to_pc()
 Serial.println("Frequency (Hz), Magnitude");
 for (int i = 0; i < NumSamples; i++)
 {
-  Serial.print(double((double(i) * double(Sampling_frequency)) / double(NumSamples)), 4);//calculates frequency for each bin
+  Serial.print(double((double(i) * double(Sampling_frequency)) / double(NumSamples)), 3);//calculates frequency for each bin
   //calculated now instead of in an array to save memory
   Serial.print(", ");
-  Serial.println(magnitude[i], 4);
+  Serial.println(magnitude[i], 3);
   delay(100);
 }
 Serial.println("Temperature Data:");
@@ -125,7 +109,7 @@ for (int i = 0; i < NumSamples; i++)
 {
   Serial.print(i * SamplingRateDelay / 1000.0); // Time in seconds
   Serial.print(", ");
-  Serial.println(temperature_data[i], 4);
+  Serial.println(temperature_data[i]);
   delay(100);
 }
 }
