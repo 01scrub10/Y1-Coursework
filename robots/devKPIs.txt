@@ -1,0 +1,117 @@
+Record of KPIs for use during development to see effect of different developmental changes to code
+--------------------------------------------------------------------------------------------------
+
+robots = 1, droids = 1, drones = 1, chargers = [[40,20]], pizzas = 9, 52 weeks
+using closest charger, opportunity charging, closest pizza
+
+name   kind    status   soc   active   weight_delivered   units_delivered   distance   energy   
+________________________________________________________________________________________________
+rob1   Robot   on       552.0 8735     2733               180               8219.16    16438    
+drd1   Droid   on       300.0 8735     5099               343               15676.38   15680    
+drn1   Drone   on       108.0 8735     7253               486               21975.98   14650 
+total                                  15085              1009                         
+
+now with max weight = 125
+name   kind    status   soc   active   weight_delivered   units_delivered   distance   energy   
+________________________________________________________________________________________________
+rob1   Robot   on       673.0 8735     15460              187               8193.69    21635    
+drd1   Droid   off      480.0 3366     5354               116               5938.94    6973     
+drn1   Drone   off      180.0 199      126                8                 477.05     318 
+total                                  20940              311
+
+now with max weight = 100
+name   kind    status   soc   active   weight_delivered   units_delivered   distance   energy   
+________________________________________________________________________________________________
+rob1   Robot   on       660.0 8735     11384              174               8219.25    20866    
+drd1   Droid   off      390.0 3927     6883               147               6927.86    8072     
+drn1   Drone   off      180.0 374      236                16                896.94     598   
+total                                  18503              337
+
+weight = 80
+name   kind    status   soc   active   weight_delivered   units_delivered   distance   energy   
+________________________________________________________________________________________________
+rob1   Robot   on       144.0 8735     8206               180               8215.78    19926    
+drd1   Droid   on       393.0 8735     16428              352               15493.79   19066    
+drn1   Drone   off      180.0 1017     672                42                2459.99    1680     
+total                                  25,306             574
+
+NOW ADDING WEIGHT CONTROL TO ASSIGNMENT:
+
+
+weight = 20
+name   kind    status   soc   active   weight_delivered   units_delivered   distance   energy   
+________________________________________________________________________________________________
+rob1   Robot   off      206.0 8736     2751               182               8234.52    16474    
+drd1   Droid   on       372.0 8736     5316               354               15525.46   15528    
+drn1   Drone   on       174.0 8736     7123               473               22003.0    14668    
+                                       15190              1009
+
+weight = 40
+Tabulated Data
+name   kind    status   soc   active   weight_delivered   units_delivered   distance   energy   
+________________________________________________________________________________________________
+rob1   Robot   on       246.0 8736     5435               179               8236.23    17312    
+drd1   Droid   on       372.0 8736     10637              358               15546.47   15548    
+drn1   Drone   on       142.0 6776     4348               276               17292.77   11711  
+                                       20,420             813
+
+weight = 60
+Tabulated Data
+name   kind    status   soc   active   weight_delivered   units_delivered   distance   energy   
+________________________________________________________________________________________________
+rob1   Robot   on       730.0 8736     7404               180               8213.32    19803    
+drd1   Droid   on       73.0  8736     14141              345               15551.69   18669    
+drn1   Drone   off      180.0 4339     2398               155               11043.69   7489  
+total                                  23943              680
+
+weight = 80
+name   kind    status   soc   active   weight_delivered   units_delivered   distance   energy   
+________________________________________________________________________________________________
+rob1   Robot   on       736.0 8735     8754               172               8227.79    20617    
+drd1   Droid   on       472.0 8735     17354              350               15485.43   19108    
+drn1   Drone   off      172.0 2816     1658               103               7053.73    4759    
+total                                  27766              625
+
+weight = 100
+name   kind    status   soc   active   weight_delivered   units_delivered   distance   energy   
+________________________________________________________________________________________________
+rob1   Robot   on       544.0 8736     13230              172               8240.55    21537    
+drd1   Droid   on       355.0 8470     14523              290               15197.03   18076    
+drn1   Drone   off      180.0 2293     1219               78                5760.18    3916     
+                                       28972              540
+
+weight = 120
+name   kind    status   soc   active   weight_delivered   units_delivered   distance   energy   
+________________________________________________________________________________________________
+rob1   Robot   on       392.0 8736     17023              183               8205.92    22278    
+drd1   Droid   on       303.0 7798     11870              238               14040.3    16411    
+drn1   Drone   off      180.0 1638     948                59                4080.05    2793 
+                                       29841              480
+
+optimise weight delivered vs units delivered???
+
+stay with weight = 120. We are going to only assign pizzas to a robot if a weaker robot cannot hold it
+name   kind    status   soc   active   weight_delivered   units_delivered   distance   energy   
+________________________________________________________________________________________________
+rob1   Robot   on       675.0 8499     15474              156               7994.68    20900    
+drd1   Droid   on       386.0 8151     13200              262               14655.33   17714    
+drn1   Drone   off      180.0 2174     1333               84                5415.05    3683 
+total                                  30,007             502
+
+
+with variable charge threshold
+name   kind    status   soc   active   weight_delivered   units_delivered   distance   energy   
+________________________________________________________________________________________________
+rob1   Robot   on       403.0 8736     17700              174               8216.14    21565    
+drd1   Droid   off      480.0 7872     12459              250               14250.77   16815    
+drn1   Drone   off      180.0 1764     1071               63                4408.92    3000
+total                                  31230              487
+                          
+variable max pizza weight
+Tabulated Data
+name   kind    status   soc   active   weight_delivered   units_delivered   distance   energy   
+________________________________________________________________________________________________
+rob1   Robot   on       374.0 8697     14764              148               8198.61    21486    
+drd1   Droid   on       428.0 8736     14624              300               15721.26   18632    
+drn1   Drone   on       136.0 8736     6248               396               22381.48   15137  
+total                                  35636              844

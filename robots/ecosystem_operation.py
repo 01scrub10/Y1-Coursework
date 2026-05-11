@@ -11,41 +11,66 @@ from robots.ecosystem.factory import ecofactory
 # Duration is set to two weeks for development and rapid testing. Set to 52 weeks for your final tests.
 
 import matplotlib.pyplot as plt
-plt.close('all')  # optional: cleans up leftovers from prior runs
-plt.ion()         # interactive mode ON (non-blocking windows)
+results = {}
+for i in range(3):
+  plt.close('all')  # optional: cleans up leftovers from prior runs
+  plt.ion()         # interactive mode ON (non-blocking windows)
 
-# Create and configure the ecosystem using the factory function. 
-# Study the factory function code to understand how the ecosystem is being created 
-# and configured. Adjust the parameters as needed for your testing and development.  
-es = ecofactory(robots = 3, droids = 3, drones = 3, chargers = [55,20], pizzas = 9)
+  # Create and configure the ecosystem using the factory function. 
+  # Study the factory function code to understand how the ecosystem is being created 
+  # and configured. Adjust the parameters as needed for your testing and development.  
+
+    
+  es = ecofactory(robots = 3, droids = 3, drones = 3, chargers = [[20,20],[60,20]], pizzas = 9)
 
 
 
-charger = es.chargers()[0]
-es.display(show = 1, pause = 10)                                                # show = 0 will turn off the display and speed up the run. Set to 1 for development and debugging, set to 0 for final runs. Note that when show = 0, you will not see the ecosystem or any messages, so it is wise to turn on messages (es.messages_on = True) when show = 0 for development and debugging. 
-es.debug = False                                                                # this will directly display damage and warning messages. Note show needs to be zero  (show = 0)
-es.messages_on = False                                                          # over 52 weeks it is wise to turn messages off as there are too many. But when researching turn on for shorter runs
-es.duration = "1 week"                                                          # We are aiming to run for a year with minimum or no bot breakages
+  charger = es.chargers()[0]
+  es.display(show = 0, pause = 10)                                                # show = 0 will turn off the display and speed up the run. Set to 1 for development and debugging, set to 0 for final runs. Note that when show = 0, you will not see the ecosystem or any messages, so it is wise to turn on messages (es.messages_on = True) when show = 0 for development and debugging. 
+  es.debug = False                                                                # this will directly display damage and warning messages. Note show needs to be zero  (show = 0)
+  es.messages_on = False                                                          # over 52 weeks it is wise to turn messages off as there are too many. But when researching turn on for shorter runs
+  es.duration = "52 week"                                                          # We are aiming to run for a year with minimum or no bot breakages
 
-home = [40,20, 0]                                                               # Place to which bots will return when idle and from which they will start. This is also the location of the charger in this example, but it doesn't have to be. You can change this and the charger location to test the bots' ability to navigate around the ecosystem.
-charge_threshold = 0.20                                                         # this is the soc percentage at which bots will decide to charge. This can be optimised and varied for each kind (see stretch objective)                               
+  home = [40,20, 0]                                                               # Place to which bots will return when idle and from which they will start. This is also the location of the charger in this example, but it doesn't have to be. You can change this and the charger location to test the bots' ability to navigate around the ecosystem.
+  charge_threshold = 0.20                                                         # this is the soc percentage at which bots will decide to charge. This can be optimised and varied for each kind (see stretch objective)                               
 
-while es.active:
+  while es.active:
 
-  for bot in es.bots():
+    for bot in es.bots():
 
-    #create_deliverables(es)                                                     # Use the create deliverables function to maintain a stock of ready pizzas
+      #create_deliverables(es)                                                     # Use the create deliverables function to maintain a stock of ready pizzas
 
-    if bot.soc / bot.max_soc < charge_threshold and bot.station is None:        # decision to charge when percent soc = 20%. This can be optimised and varied for each kind (see stretch objective)
-      bot.charge(charger)                                                       # initiate charging.
-    if bot.activity == 'idle':                                                  # if bot is idle, contract to deliver a ready pizza.
-      for pizza in es.deliverables():
-        if pizza.status == 'ready':
-          bot.deliver(pizza)                                                    # ensure we do not contract to deliver a pizza already contracted by another bot
-          break
-      if not bot.destination and bot.coordinates != home:
-        bot.target_destination = home                                           # if we get here, we've gone through the list of pizzas and none was ready
-    if bot.target_destination:bot.move()                                        # move whilst we have a destination. At the end of delivery, the bot status will be set to idle
+      if bot.soc / bot.max_soc < charge_threshold and bot.station is None:        # decision to charge when percent soc = 20%. This can be optimised and varied for each kind (see stretch objective)
+        bot.charge(charger)                                                       # initiate charging.
+      if bot.activity == 'idle':                                                  # if bot is idle, contract to deliver a ready pizza.
+        for pizza in es.deliverables():
+          if pizza.status == 'ready':
+            bot.deliver(pizza)                                                    # ensure we do not contract to deliver a pizza already contracted by another bot
+            break
+        if not bot.destination and bot.coordinates != home:
+          bot.target_destination = home                                           # if we get here, we've gone through the list of pizzas and none was ready
+      if bot.target_destination:bot.move()                                        # move whilst we have a destination. At the end of delivery, the bot status will be set to idle
 
-  es.update()                                                                   # update when all bots have been processed and moved
+    es.update()                                                                   # update when all bots have been processed and moved
+  
+  results[i] = es
 
+total_weights = [
+    sum(r['weight_delivered'] for r in es.registry(kind_class='Bot').values())
+    for es in results.values()
+]
+average_weight = sum(total_weights) / len(total_weights)
+total_units = [
+    sum(r['units_delivered'] for r in es.registry(kind_class='Bot').values())
+    for es in results.values()
+]
+average_units = sum(total_units) / len(total_units)
+print("*For 3 runs:*")
+print("Average weight delivered per run:", average_weight)
+print("Average units delivered per run:", average_units)
+
+# Tabulate results for the last run
+print("\n*Example of tabulated results for one run:*")
+es.tabulate(
+    'name', 'kind', 'status','active', 'weight_delivered', 'units_delivered', 'distance', 'energy',
+    kind_class='Bot')
