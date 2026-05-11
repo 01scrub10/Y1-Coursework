@@ -1,7 +1,4 @@
 #include <Arduino.h>
-//TODO:
-//comment code better
-//remove prints
 
 // function declarations:
 void collect_temperature_data();
@@ -57,6 +54,7 @@ void SetSampleRate(double delay)
   {
     delay = 10000; 
   }
+  //calculate sampling frequency and num samples based on delay and set to global variables
   SamplingRateDelay = delay;
   Sampling_frequency = 1000/SamplingRateDelay;
   NumSamples = int(SampleCollectionTime / SamplingRateDelay); 
@@ -64,9 +62,7 @@ void SetSampleRate(double delay)
   {
     NumSamples = 60;
   }
-  Serial.print("Sampling rate set to ");
-  Serial.print(Sampling_frequency);
-  Serial.println(" Hz");
+  
 }
 
 
@@ -76,11 +72,11 @@ double determine_fluctuation()
   //determines the fluctuation of the data to find if there is significant fluctuation
   double total_differences = 0;
   double average_fluctuation;
-  for (int i = 1;i<=NumSamples;i++)
+  for (int i = 1;i<=NumSamples;i++)//difference between consecutive samples 
   {
     total_differences = abs(temperature_data[i] - temperature_data[i-1]);
   }
-  average_fluctuation = total_differences/NumSamples;
+  average_fluctuation = total_differences/NumSamples;//mean average
   return average_fluctuation;
 }
 double TemperatureReading() //gets the temperature reading from the sensor and converts it to Celsius
@@ -102,35 +98,33 @@ double TemperatureReading() //gets the temperature reading from the sensor and c
 
 void collect_temperature_data()
 {
-//collects data for 180 seconds and stores it in an array
-for (int i = 0; i < NumSamples; i++)
-{
-temperature_data[i] = TemperatureReading();
-delay(SamplingRateDelay);
-Serial.print("Temperature reading ");
-Serial.print(i);
-Serial.print(": ");
-Serial.println(temperature_data[i]);
-}
+  //collects data for 180 seconds and stores it in an array
+  for (int i = 0; i < NumSamples; i++)
+  {
+    temperature_data[i] = TemperatureReading();
+    delay(SamplingRateDelay);
+  }
 }
 
 void apply_dft()
-{
-for (int k = 0; k < NumSamples; k++)
-{
-  double real = 0;
-  double imag = 0;
-  for (int n = 0; n < NumSamples; n++)
+{//applies the dft formulae from the documentation to the collected data
+  for (int k = 0; k < NumSamples; k++)
   {
-    real += temperature_data[n] * cos(2 * PI * k * n / NumSamples);
-    imag -= temperature_data[n] * sin(2 * PI * k * n / NumSamples);
+    double real = 0;
+    double imag = 0;
+    for (int n = 0; n < NumSamples; n++)
+    {
+      //find real and imaginary parts of dft
+        //only need to store as single variables as are not needed after magnitude is calculated
+      real += temperature_data[n] * cos(2 * PI * k * n / NumSamples);
+      imag -= temperature_data[n] * sin(2 * PI * k * n / NumSamples);
+    }
+    magnitude[k] = sqrt(real*real + imag*imag);//magnitude of complex parts
   }
-  magnitude[k] = sqrt(real*real + imag*imag);
-}
 }
 
 void send_data_to_pc()
-{
+{//prints data in serial monitor
 Serial.println("Frequency (Hz), Magnitude");
 for (int i = 0; i < NumSamples; i++)
 {
@@ -138,7 +132,7 @@ for (int i = 0; i < NumSamples; i++)
   //calculated now instead of in an array to save memory
   Serial.print(", ");
   Serial.println(magnitude[i]);
-  delay(100);
+  delay(100);//delay to stop serial output corruption
 }
 Serial.println("Temperature Data:");
 Serial.println("Time (s), Temperature (C)");
@@ -147,7 +141,7 @@ for (int i = 0; i < NumSamples; i++)
   Serial.print(i * SamplingRateDelay / 1000.0); // Time in seconds
   Serial.print(", ");
   Serial.println(temperature_data[i]);
-  delay(100);
+  delay(100);//delay to stop serial output corruption
 }
 }
 
@@ -156,7 +150,7 @@ double find_dominant_frequency()
   //find dominant frequency
   int dominant_index = 1; //assume lowest frequency is dominant to avoid freq=0 issues
   double current_max_magnitude = magnitude[1];
-
+  //searches for maximum magnitude
    for (int i = 1; i < NumSamples/2; i++)//only need to check first half of dft results because of nyquist theorem
   {
     if (current_max_magnitude - magnitude[i] < -0.01)//if magnitude[i] > current max magnitude. Have to use this instead of > to avoid issues with very small differences due to noise
@@ -199,8 +193,6 @@ void decide_power_mode(double current_fluctuation)
   double new_sample_delay;
   //dft dominiant frequency
   double dominant_frequency = find_dominant_frequency();
-  Serial.print("Dominant Frequency: ");
-  Serial.println(dominant_frequency);
 
   
   //first set mode based on fluctuation
@@ -210,7 +202,6 @@ void decide_power_mode(double current_fluctuation)
   {
     mode_rate_delay = 1000; //set to active mode
     inactive_cycles = 0; //reset inactive cycle count
-    Serial.println("High fluctuation detected, setting to active mode");
   }
   else
   {
@@ -245,26 +236,20 @@ void decide_power_mode(double current_fluctuation)
   }
   //adjust the new sample delay again using the same method but with a lower weight
   new_sample_delay = new_sample_delay + ((mode_rate_delay - new_sample_delay) * 0.25);
-
-  Serial.print("inactive cycles: ");
-  Serial.println(inactive_cycles);
-  delay(100); //delay to stop serial output corruption
   
   //then adjust the sample delay dynamically based on dominant frequency
     //if the dominant frequency is more than half the sampling freq, increase to 2x for nyquists theorum
     if (1000/new_sample_delay < dominant_frequency*2)
     {
       new_sample_delay = new_sample_delay * 0.75;//increase the rate of sampling
-      Serial.println("sampling frequency is lower than nyquist of dominant frequency, increasing sample rate");
     }
     else if (1000/new_sample_delay>8*dominant_frequency)// if the dominant frequency is much lower than sampling rate
     {
       //decreases sample rate slightly to save power
       new_sample_delay = new_sample_delay * 1.5; //increase delay by 50%
-      Serial.println("Dominant frequency is much lower than sampling frequency, decreasing sample rate to save power");
     }
 
-  //set new delay
-  delay(100); //short delay to stop serial output corruption
-   SetSampleRate(new_sample_delay);
+  
+    delay(100); //short delay to stop serial output corruption
+   SetSampleRate(new_sample_delay);//set new delay
 }
